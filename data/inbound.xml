@@ -1,0 +1,22 @@
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+    <SOAP-ENV:Header xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/">
+        <wsse:Security xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd">
+            <wsse:UsernameToken>
+                <wsse:Username>opsmuser</wsse:Username>
+                <wsse:Password>opsm1234</wsse:Password>
+            </wsse:UsernameToken>
+        </wsse:Security>
+    </SOAP-ENV:Header>
+    <soap:Body>
+        <ns2:retrievePackagingHierarchy
+                xmlns:ns2="http://xmlns.oracle.com/oracle/apps/pas/serials/serialsService/applicationModule/common/types/"
+                xmlns:ns4="http://xmlns.oracle.com/oracle/apps/pas/serials/serialsService/view/common/"
+        >
+            <ns2:voRow>
+                <ns4:TagId>urn:epc:id:sscc:0350268.0000238244</ns4:TagId>
+                <ns4:SendChildren>true</ns4:SendChildren>
+                <ns4:SendProductInformation>true</ns4:SendProductInformation>
+            </ns2:voRow>
+        </ns2:retrievePackagingHierarchy>
+    </soap:Body>
+</soap:Envelope>

@@ -30,6 +30,7 @@ var (
 	tlsCertificate        = flag.String("cert.file", "", "path to the TLS certificate file")
 	forwardClientIP       = flag.Bool("forward-client-ip", false, "enable forwarding of the client IP to the backend using the 'X-Forwarded-For' and 'Forwarded' headers")
 	closeConnections      = flag.Bool("close-connections", false, "close connections to the clients and backends")
+	searchValue           = flag.String("search-value", "", "A search value that, if found in the inbound message will allow the B system to reply.")
 )
 
 // Sets the request URL.
@@ -71,15 +72,49 @@ func getTransport(scheme string, timeout time.Duration) (transport *http.Transpo
 
 // handleAlternativeRequest duplicate request and sent it to alternative backend
 func handleAlternativeRequest(request *http.Request, timeout time.Duration, scheme string) {
+
 	defer func() {
 		if r := recover(); r != nil && *debug {
 			log.Println("Recovered in ServeHTTP(alternate request) from:", r)
 		}
 	}()
 	response := handleRequest(request, timeout, scheme)
+
 	if response != nil {
 		response.Body.Close()
 	}
+}
+
+// inspects the body
+func getBody(request *http.Request) []byte {
+	var bodyCopy []byte
+	var err error
+	if request.Body != nil {
+		bodyCopy, err = ioutil.ReadAll(request.Body)
+		if err == nil {
+			print(bodyCopy)
+			restoreBody(request, bodyCopy)
+			print(bodyCopy)
+		}
+	}
+	return bodyCopy
+}
+
+// restores the request buffer
+func restoreBody(request *http.Request, bodyCopy []byte) {
+	body := make([]byte, len(bodyCopy))
+	copy(body, bodyCopy)
+	request.Body = ioutil.NopCloser(bytes.NewBuffer(body))
+	print(bodyCopy)
+}
+
+func checkForString(body []byte, checkVal string) bool {
+	var searchable string
+	// convert the body to a string
+	body = []byte(string(body))
+	// perform the search
+	searchable = string(body)
+	return strings.Contains(searchable, checkVal)
 }
 
 // Sends a request and returns the response.
@@ -139,6 +174,14 @@ func (h *handler) SetSchemes() {
 func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var alternativeRequest *http.Request
 	var productionRequest *http.Request
+
+	body := getBody(req)
+	flip := checkForString(body, *searchValue)
+
+	if flip {
+		log.Println("we found the search pattern...flipping the a/b systems...")
+
+	}
 
 	if *forwardClientIP {
 		updateForwardedHeaders(req)
