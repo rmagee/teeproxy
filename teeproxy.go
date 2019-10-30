@@ -174,31 +174,40 @@ func (h *handler) SetSchemes() {
 func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var alternativeRequest *http.Request
 	var productionRequest *http.Request
+	var altHost string
+	var altScheme string
 
 	body := getBody(req)
 	flip := checkForString(body, *searchValue)
 
 	if flip {
-		log.Println("we found the search pattern...flipping the a/b systems...")
-
+		log.Println("we found the search pattern...flipping the a to the b system.")
 	}
 
 	if *forwardClientIP {
 		updateForwardedHeaders(req)
 	}
+
 	if *percent == 100.0 || h.Randomizer.Float64()*100 < *percent {
 		for _, alt := range h.Alternatives {
 			alternativeRequest = DuplicateRequest(req)
+			altHost = alt.Alternative
+			altScheme = alt.AlternativeScheme
 
 			timeout := time.Duration(*alternateTimeout) * time.Millisecond
 
-			setRequestTarget(alternativeRequest, alt.Alternative, alt.AlternativeScheme)
+			if flip {
+				setRequestTarget(alternativeRequest, h.Target, h.TargetScheme)
+			} else {
+				setRequestTarget(alternativeRequest, alt.Alternative, alt.AlternativeScheme)
+			}
 
 			if *alternateHostRewrite {
 				alternativeRequest.Host = alt.Alternative
 			}
-
-			go handleAlternativeRequest(alternativeRequest, timeout, alt.AlternativeScheme)
+			if flip != true {
+				go handleAlternativeRequest(alternativeRequest, timeout, alt.AlternativeScheme)
+			}
 		}
 	}
 
@@ -209,7 +218,11 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		}
 	}()
 
-	setRequestTarget(productionRequest, h.Target, h.TargetScheme)
+	if flip == true {
+		setRequestTarget(productionRequest, altHost, altScheme)
+	} else {
+		setRequestTarget(productionRequest, h.Target, h.TargetScheme)
+	}
 
 	if *productionHostRewrite {
 		productionRequest.Host = h.Target
