@@ -92,9 +92,7 @@ func getBody(request *http.Request) []byte {
 	if request.Body != nil {
 		bodyCopy, err = ioutil.ReadAll(request.Body)
 		if err == nil {
-			print(bodyCopy)
 			restoreBody(request, bodyCopy)
-			print(bodyCopy)
 		}
 	}
 	return bodyCopy
@@ -105,7 +103,6 @@ func restoreBody(request *http.Request, bodyCopy []byte) {
 	body := make([]byte, len(bodyCopy))
 	copy(body, bodyCopy)
 	request.Body = ioutil.NopCloser(bytes.NewBuffer(body))
-	print(bodyCopy)
 }
 
 func checkForString(body []byte, checkVal string) bool {
