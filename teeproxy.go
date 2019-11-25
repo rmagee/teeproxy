@@ -178,11 +178,23 @@ func (h *handler) SetSchemes() {
 func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var alternativeRequest *http.Request
 	var productionRequest *http.Request
-	var altHost string
+	var altHost string = ""
 	var altScheme string
+	var flip bool
+	var host string
+	var search string
 
 	body := getBody(req)
-	flip := checkForString(body, *searchValue)
+
+	flip, search, host = checkUrl(req)
+	if flip {
+		log.Println("found %s going to use host %s", search, host)
+		altScheme, altHost = SchemeAndHost(host)
+	}
+
+	if !flip {
+		flip = checkForString(body, *searchValue)
+	}
 
 	if flip {
 		log.Println("we found the search pattern...flipping the a to the b system.")
@@ -195,8 +207,10 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if *percent == 100.0 || h.Randomizer.Float64()*100 < *percent {
 		for _, alt := range h.Alternatives {
 			alternativeRequest = DuplicateRequest(req)
-			altHost = alt.Alternative
-			altScheme = alt.AlternativeScheme
+			if altHost == "" {
+				altHost = alt.Alternative
+				altScheme = alt.AlternativeScheme
+			}
 
 			timeout := time.Duration(*alternateTimeout) * time.Millisecond
 
@@ -388,6 +402,11 @@ func fileExists(filename string) bool {
 }
 
 func readConfigFile(filePath *string) {
+	/*
+		Reads values from the config file specified at the commmand line and puts
+		URL search values into the systemMap map variable for later comparison against
+		inbound url values.
+	*/
 	if fileExists(*filePath) {
 		systemMap = make(map[string]string)
 		log.Printf("Found config file at %s.", filePath)
@@ -411,4 +430,16 @@ func readConfigFile(filePath *string) {
 	} else {
 		panic(errors.New("A config file was specified but could not be found!"))
 	}
+}
+
+func checkUrl(req *http.Request) (bool, string, string) {
+	/*
+		Looks in the request path for any values in the systemMap.
+	*/
+	for k, v := range systemMap {
+		if strings.Contains(req.RequestURI, k) {
+			return true, k, v
+		}
+	}
+	return false, "", ""
 }
