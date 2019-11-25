@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"crypto/tls"
+	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -11,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"runtime"
 	"strings"
 	"time"
@@ -31,7 +34,11 @@ var (
 	forwardClientIP       = flag.Bool("forward-client-ip", false, "enable forwarding of the client IP to the backend using the 'X-Forwarded-For' and 'Forwarded' headers")
 	closeConnections      = flag.Bool("close-connections", false, "close connections to the clients and backends")
 	searchValue           = flag.String("search-value", "", "A search value that, if found in the inbound message will allow the B system to reply.")
+	configFile            = flag.String("config-file", "", "A config file that has defined routes for systems based on search and/or URL parameters.")
 )
+
+// keeps track of the urls
+var systemMap map[string]string
 
 // Sets the request URL.
 //
@@ -250,6 +257,11 @@ func main() {
 	log.Printf("Starting teeproxy at %s sending to A: %s and B: %s",
 		*listen, *targetProduction, altServers)
 
+	if *configFile != "" {
+		log.Printf("Looking for a config file at %s", *configFile)
+		readConfigFile(configFile)
+	}
+
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	var err error
@@ -358,5 +370,45 @@ func insertOrExtendForwardedHeader(request *http.Request, remoteIP string) {
 	} else {
 		// insert
 		request.Header.Set(FORWARDED_HEADER, extension)
+	}
+}
+
+func check(e error) {
+	if e != nil {
+		panic(e)
+	}
+}
+
+func fileExists(filename string) bool {
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
+}
+
+func readConfigFile(filePath *string) {
+	if fileExists(*filePath) {
+		systemMap = make(map[string]string)
+		log.Printf("Found config file at %s.", filePath)
+		dat, err := ioutil.ReadFile(*filePath)
+		check(err)
+		fileData := string(dat)
+		var lines = strings.Split(fileData, "\n")
+		for _, line := range lines {
+			fmt.Println(line)
+			if !strings.HasPrefix(line, "#") {
+				line = strings.TrimRight(line, "\r \n")
+				var linevals = strings.Split(line, ",")
+				if len(linevals) > 1 {
+					if linevals[1] == "url" {
+						log.Printf("adding %s %s to the systemMap", linevals[0], linevals[2])
+						systemMap[linevals[0]] = linevals[2]
+					}
+				}
+			}
+		}
+	} else {
+		panic(errors.New("A config file was specified but could not be found!"))
 	}
 }
