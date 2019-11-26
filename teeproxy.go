@@ -192,7 +192,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		altScheme, altHost = SchemeAndHost(host)
 	}
 
-	if !flip {
+	if !flip && *searchValue != "" {
 		flip = checkForString(body, *searchValue)
 		if flip {
 			log.Println("found the search pattern in the message...flipping the a to the b system.")
@@ -437,6 +437,7 @@ func checkUrl(req *http.Request) (bool, string, string) {
 	*/
 	for k, v := range systemMap {
 		if strings.Contains(req.RequestURI, k) {
+			log.Printf("found %s in the URL.  using host %s.", k, v)
 			return true, k, v
 		}
 	}
