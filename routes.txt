@@ -1,3 +1,4 @@
 # set up a search value, a search type (body or url) and a system to send the data to
 picklist,url,localhost:8080
 search,url,https://www.google.com
+

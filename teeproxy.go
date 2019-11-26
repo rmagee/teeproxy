@@ -188,16 +188,15 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	flip, search, host = checkUrl(req)
 	if flip {
-		log.Println("found %s going to use host %s", search, host)
+		log.Printf("found %s going to use host %s", search, host)
 		altScheme, altHost = SchemeAndHost(host)
 	}
 
 	if !flip {
 		flip = checkForString(body, *searchValue)
-	}
-
-	if flip {
-		log.Println("we found the search pattern...flipping the a to the b system.")
+		if flip {
+			log.Println("found the search pattern in the message...flipping the a to the b system.")
+		}
 	}
 
 	if *forwardClientIP {
