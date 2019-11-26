@@ -1,4 +1,5 @@
 # set up a search value, a search type (body or url) and a system to send the data to
 picklist,url,localhost:8080
-search,url,https://www.google.com
+08620530000.0.0</gs1ushc:transferredById>,message,localhost:8080
+
 

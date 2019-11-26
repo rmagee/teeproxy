@@ -39,6 +39,7 @@ var (
 
 // keeps track of the urls
 var systemMap map[string]string
+var messageMap map[string]string
 
 // Sets the request URL.
 //
@@ -190,6 +191,11 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if flip {
 		log.Printf("found %s going to use host %s", search, host)
 		altScheme, altHost = SchemeAndHost(host)
+	}
+
+	if !flip {
+		log.Println("Nothing was found in the URL, looking in body...")
+		flip, search, host = checkMessage(body)
 	}
 
 	if !flip && *searchValue != "" {
@@ -408,6 +414,7 @@ func readConfigFile(filePath *string) {
 	*/
 	if fileExists(*filePath) {
 		systemMap = make(map[string]string)
+		messageMap = make(map[string]string)
 		log.Printf("Found config file at %s.", filePath)
 		dat, err := ioutil.ReadFile(*filePath)
 		check(err)
@@ -422,6 +429,9 @@ func readConfigFile(filePath *string) {
 					if linevals[1] == "url" {
 						log.Printf("adding %s %s to the systemMap", linevals[0], linevals[2])
 						systemMap[linevals[0]] = linevals[2]
+					} else {
+						log.Printf("adding %s %s to the messageMap", linevals[0], linevals[2])
+						messageMap[linevals[0]] = linevals[2]
 					}
 				}
 			}
@@ -437,6 +447,19 @@ func checkUrl(req *http.Request) (bool, string, string) {
 	*/
 	for k, v := range systemMap {
 		if strings.Contains(req.RequestURI, k) {
+			log.Printf("found %s in the URL.  using host %s.", k, v)
+			return true, k, v
+		}
+	}
+	return false, "", ""
+}
+
+func checkMessage(body []byte) (bool, string, string) {
+	/*
+		Looks in the body of the request for the search value.
+	*/
+	for k, v := range messageMap {
+		if checkForString(body, k) {
 			log.Printf("found %s in the URL.  using host %s.", k, v)
 			return true, k, v
 		}
