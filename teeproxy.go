@@ -204,6 +204,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if !flip {
 		log.Println("Nothing was found in the URL, looking in body...")
 		flip, search, host = checkMessage(body)
+		altScheme, altHost = SchemeAndHost(host)
 	}
 
 	if !flip && *searchValue != "" {
