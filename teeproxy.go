@@ -21,8 +21,10 @@ import (
 
 // Console flags
 var (
-	listen                = flag.String("l", ":8888", "port to accept requests")
+	listen = flag.String("l", ":8888", "port to accept requests")
+
 	targetProduction      = flag.String("a", "localhost:8080", "where production traffic goes. http://localhost:8080/production")
+	targetProduction2     = flag.String("a2", "", "if you want to send messages to another production system when the first message fails, set this.")
 	debug                 = flag.Bool("debug", false, "more logging, showing ignored output")
 	productionTimeout     = flag.Int("a.timeout", 2500, "timeout in milliseconds for production traffic")
 	alternateTimeout      = flag.Int("b.timeout", 1000, "timeout in milliseconds for alternate site traffic")
@@ -144,17 +146,19 @@ func SchemeAndHost(url string) (scheme, hostname string) {
 	return
 }
 
-// handler contains the address of the main Target and the one for the Alternative target
+// handler contains the address of the main Target and the one for the URL target
 type handler struct {
-	Target       string
-	TargetScheme string
-	Alternatives []backend
-	Randomizer   rand.Rand
+	Target        string
+	TargetScheme  string
+	Target2       string
+	Target2Scheme string
+	Alternatives  []backend
+	Randomizer    rand.Rand
 }
 
 type backend struct {
-	Alternative       string
-	AlternativeScheme string
+	URL    string
+	scheme string
 }
 
 type arrayAlternatives []backend
@@ -165,13 +169,16 @@ func (i *arrayAlternatives) String() string {
 
 func (i *arrayAlternatives) Set(value string) error {
 	scheme, endpoint := SchemeAndHost(value)
-	altServer := backend{AlternativeScheme: scheme, Alternative: endpoint}
+	altServer := backend{scheme: scheme, URL: endpoint}
 	*i = append(*i, altServer)
 	return nil
 }
 
 func (h *handler) SetSchemes() {
 	h.TargetScheme, h.Target = SchemeAndHost(h.Target)
+	if h.Target2 != "" {
+		h.Target2Scheme, h.Target2 = SchemeAndHost(h.Target2)
+	}
 }
 
 // ServeHTTP duplicates the incoming request (req) and does the request to the
@@ -179,6 +186,7 @@ func (h *handler) SetSchemes() {
 func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var alternativeRequest *http.Request
 	var productionRequest *http.Request
+	var productionRequest2 *http.Request
 	var altHost string = ""
 	var altScheme string
 	var flip bool
@@ -211,10 +219,11 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	if *percent == 100.0 || h.Randomizer.Float64()*100 < *percent {
 		for _, alt := range h.Alternatives {
+			//here the inbound request is duplicated
 			alternativeRequest = DuplicateRequest(req)
 			if altHost == "" {
-				altHost = alt.Alternative
-				altScheme = alt.AlternativeScheme
+				altHost = alt.URL
+				altScheme = alt.scheme
 			}
 
 			timeout := time.Duration(*alternateTimeout) * time.Millisecond
@@ -222,19 +231,22 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			if flip {
 				setRequestTarget(alternativeRequest, h.Target, h.TargetScheme)
 			} else {
-				setRequestTarget(alternativeRequest, alt.Alternative, alt.AlternativeScheme)
+				setRequestTarget(alternativeRequest, alt.URL, alt.scheme)
 			}
 
 			if *alternateHostRewrite {
-				alternativeRequest.Host = alt.Alternative
+				alternativeRequest.Host = alt.URL
 			}
 			if flip != true {
-				go handleAlternativeRequest(alternativeRequest, timeout, alt.AlternativeScheme)
+				go handleAlternativeRequest(alternativeRequest, timeout, alt.scheme)
 			}
 		}
 	}
 
 	productionRequest = req
+	if h.Target2 != "" {
+		productionRequest2 = DuplicateRequest(req)
+	}
 	defer func() {
 		if r := recover(); r != nil && *debug {
 			log.Println("Recovered in ServeHTTP(production request) from:", r)
@@ -242,6 +254,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}()
 
 	if flip == true {
+		// if the search value is found, the altHost becomes the a system
 		setRequestTarget(productionRequest, altHost, altScheme)
 	} else {
 		setRequestTarget(productionRequest, h.Target, h.TargetScheme)
@@ -252,7 +265,20 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	timeout := time.Duration(*productionTimeout) * time.Millisecond
+	// this is where the "a" request is sent....
 	resp := handleRequest(productionRequest, timeout, h.TargetScheme)
+
+	if (resp == nil || resp.StatusCode > 299) && !flip && h.Target2 != "" {
+		log.Println("First host did not reply with success...trying the second at ", h.Target2)
+
+		setRequestTarget(productionRequest2, h.Target2, h.Target2Scheme)
+		if *productionHostRewrite {
+			if productionRequest2 != nil {
+				productionRequest2.Host = h.Target
+			}
+		}
+		resp = handleRequest(productionRequest2, timeout, h.Target2Scheme)
+	}
 
 	if resp != nil {
 		defer resp.Body.Close()
@@ -305,16 +331,17 @@ func main() {
 		}
 	}
 
-	h := handler{
+	requestHandler := handler{
 		Target:       *targetProduction,
+		Target2:      *targetProduction2,
 		Alternatives: arrayAlternatives(altServers),
 		Randomizer:   *rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 
-	h.SetSchemes()
+	requestHandler.SetSchemes()
 
 	server := &http.Server{
-		Handler: h,
+		Handler: requestHandler,
 	}
 	if *closeConnections {
 		// Close connections to clients by setting the "Connection": "close" header in the response.
