@@ -192,13 +192,21 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var flip bool
 	var host string
 	var search string
+	var useA2System bool
 
 	body := getBody(req)
 
 	flip, search, host = checkUrl(req)
 	if flip {
-		log.Printf("found %s going to use host %s", search, host)
-		altScheme, altHost = SchemeAndHost(host)
+		if host == "b" && h.Target2 != "" {
+			log.Printf("b host specifier was found in the config file...using the a2 system "+
+				"system %s as a backup.", h.Target2)
+			useA2System = true
+			flip = false
+		} else {
+			log.Printf("found %s going to use host %s", search, host)
+			altScheme, altHost = SchemeAndHost(host)
+		}
 	}
 
 	if !flip {
@@ -245,7 +253,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	productionRequest = req
-	if h.Target2 != "" {
+	if h.Target2 != "" && useA2System {
 		productionRequest2 = DuplicateRequest(req)
 	}
 	defer func() {
@@ -269,7 +277,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// this is where the "a" request is sent....
 	resp := handleRequest(productionRequest, timeout, h.TargetScheme)
 
-	if (resp == nil || resp.StatusCode > 299) && !flip && h.Target2 != "" {
+	if (resp == nil || resp.StatusCode > 299) && !flip && h.Target2 != "" && useA2System {
 		log.Println("First host did not reply with success...trying the second at ", h.Target2)
 
 		setRequestTarget(productionRequest2, h.Target2, h.Target2Scheme)
