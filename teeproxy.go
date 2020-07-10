@@ -47,7 +47,7 @@ var messageMap map[string]string
 //
 // This turns a inbound request (a request without URL) into an outbound request.
 func setRequestTarget(request *http.Request, target string, scheme string) {
-	URL, err := url.Parse(scheme + "://" + target + request.URL.String())
+	URL, err := url.Parse(scheme + "://" + target + request.URL.Path)
 	if err != nil {
 		log.Println(err)
 	}
@@ -253,6 +253,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	productionRequest = req
+	productionRequestCopy := DuplicateRequest(req)
 	if h.Target2 != "" && useA2System {
 		productionRequest2 = DuplicateRequest(req)
 	}
@@ -292,6 +293,32 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if resp != nil {
 		defer resp.Body.Close()
 
+		if resp.StatusCode == 500 {
+			bodyBytes, err := ioutil.ReadAll(resp.Body)
+			bodyString := string(bodyBytes)
+			if err == nil {
+				if strings.Contains(bodyString, "<root><error>") {
+					log.Println("Going to try another system...")
+					curHost := resp.Request.URL.Host
+					curScheme := resp.Request.URL.Scheme
+					// flip the target
+					if curHost == h.Target2 {
+						curHost = h.Target
+						curScheme = h.TargetScheme
+					} else {
+						curHost = h.Target2
+						curScheme = h.Target2Scheme
+					}
+					log.Println("Switched host to ", curHost)
+					setRequestTarget(productionRequestCopy, curHost, curScheme)
+					resp = handleRequest(productionRequestCopy, timeout, curScheme)
+					if resp != nil {
+						defer resp.Body.Close()
+					}
+				}
+			}
+		}
+
 		// Forward response headers.
 		for k, v := range resp.Header {
 			w.Header()[k] = v
@@ -300,6 +327,12 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 		// Forward response body.
 		io.Copy(w, resp.Body)
+	}
+}
+
+func checkForHRFail(response *http.Response) {
+	if response != nil {
+		return
 	}
 }
 
