@@ -91,7 +91,10 @@ func handleAlternativeRequest(request *http.Request, timeout time.Duration, sche
 	response := handleRequest(request, timeout, scheme)
 
 	if response != nil {
-		response.Body.Close()
+		err := response.Body.Close()
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 }
 
@@ -291,13 +294,21 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if resp != nil {
-		defer resp.Body.Close()
+		defer func() {
+			if resp != nil {
+				err := resp.Body.Close()
+				log.Println("Closed the body out.")
+				if err != nil {
+					log.Fatal(err)
+				}
+			}
+		}()
 
 		if resp.StatusCode == 500 {
 			bodyBytes, err := ioutil.ReadAll(resp.Body)
 			bodyString := string(bodyBytes)
 			if err == nil {
-				if strings.Contains(bodyString, "<root><error>") {
+				if strings.Contains(bodyString, "<root><error>") && strings.Contains(resp.Request.RequestURI, "PackagingHierarchy") {
 					log.Println("Going to try another system...")
 					curHost := resp.Request.URL.Host
 					curScheme := resp.Request.URL.Scheme
@@ -312,9 +323,6 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 					log.Println("Switched host to ", curHost)
 					setRequestTarget(productionRequestCopy, curHost, curScheme)
 					resp = handleRequest(productionRequestCopy, timeout, curScheme)
-					if resp != nil {
-						defer resp.Body.Close()
-					}
 				}
 			}
 		}
@@ -326,7 +334,12 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(resp.StatusCode)
 
 		// Forward response body.
-		io.Copy(w, resp.Body)
+		written, err := io.Copy(w, resp.Body)
+		if err != nil {
+			log.Fatal(err)
+		} else {
+			log.Println("Sent ", written, " bytes")
+		}
 	}
 }
 
@@ -389,7 +402,10 @@ func main() {
 		// Close connections to clients by setting the "Connection": "close" header in the response.
 		server.SetKeepAlivesEnabled(false)
 	}
-	server.Serve(listener)
+	err = server.Serve(listener)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 type nopCloser struct {
