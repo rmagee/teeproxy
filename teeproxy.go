@@ -305,10 +305,9 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			}
 		}()
 		if resp.StatusCode == 500 {
-			bodyBytes, err := ioutil.ReadAll(resp.Body)
-			bodyString := string(bodyBytes)
+			_, err := ioutil.ReadAll(resp.Body)
 			if err == nil {
-				if strings.Contains(bodyString, "<root><error>") && strings.Contains(resp.Request.RequestURI, "PackagingHierarchy") {
+				if strings.Contains(resp.Request.RequestURI, "PackagingHierarchy") {
 					log.Println("Going to try another system...")
 					curHost := resp.Request.URL.Host
 					curScheme := resp.Request.URL.Scheme
