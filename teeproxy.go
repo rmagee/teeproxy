@@ -48,6 +48,7 @@ var messageMap map[string]string
 // This turns a inbound request (a request without URL) into an outbound request.
 func setRequestTarget(request *http.Request, target string, scheme string) {
 	URL, err := url.Parse(scheme + "://" + target + request.URL.Path)
+	URL.RawQuery = request.URL.RawQuery
 	if err != nil {
 		log.Println(err)
 	}
@@ -303,7 +304,6 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 				}
 			}
 		}()
-
 		if resp.StatusCode == 500 {
 			bodyBytes, err := ioutil.ReadAll(resp.Body)
 			bodyString := string(bodyBytes)
