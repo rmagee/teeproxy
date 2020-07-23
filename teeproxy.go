@@ -213,8 +213,8 @@ func (h handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	if !flip {
-		log.Println("Nothing was found in the URL, looking in body...")
+	if true {
+		log.Println("Checking the message, messsage will override URL configs, looking in body...")
 		flip, search, host = checkMessage(body)
 		altScheme, altHost = SchemeAndHost(host)
 	}
@@ -544,7 +544,7 @@ func checkMessage(body []byte) (bool, string, string) {
 	*/
 	for k, v := range messageMap {
 		if checkForString(body, k) {
-			log.Printf("found %s in the URL.  using host %s.", k, v)
+			log.Printf("found %s in the message body.  using host %s.", k, v)
 			return true, k, v
 		}
 	}
